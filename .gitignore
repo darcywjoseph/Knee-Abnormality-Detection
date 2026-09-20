@@ -1,0 +1,54 @@
+# Data.
+# The licensed competition files and anything bulky stay out; the DERIVED artefacts that
+# every experiment depends on are tracked, because losing them loses the experiments.
+data/train.csv
+data/test.csv
+data/train_series.csv
+data/test_series.csv
+data/sample_submission.csv
+data/sample_dicoms/
+# cache_fake/ and cache_v3_meta/ (per-shard manifests from the v3 cache builds)
+data/cache*/
+# ~58 MB of raw run directories pulled off terminated Lambda instances
+data/rescue/
+# Tracked on purpose: data/folds.csv, data/weak_labels/, data/slice_dir_fix.csv, data/oof/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Experiment artifacts (weights, logs stay local; ledger is tracked)
+experiments/runs/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Secrets
+.kaggle/
+kaggle.json
+.env
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# local training outputs
+runs/
+
+notebooks/archive
+notebooks/reference
+
+data/
+
+docs/
+
+experiments/
