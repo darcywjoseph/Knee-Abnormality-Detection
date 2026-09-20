@@ -40,6 +40,3 @@ ignore = ["D107"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.ruff.lint.per-file-ignores]
-# Generated from notebooks/02_baseline_train_2p5d.ipynb by knee.train.export_notebook; never hand-edited.
-"src/knee/train/train_2p5d.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "E402", "E501", "I001"]
