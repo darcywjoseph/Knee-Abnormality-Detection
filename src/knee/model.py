@@ -105,7 +105,11 @@ class Model2p5D(nn.Module):
         super().__init__()
         self.n_slots = cfg["N_SLOTS"]
         self.is_vit = "vit" in cfg["BACKBONE"]
-        kw = {"img_size": cfg["VIT_IMG"]} if self.is_vit else {}
+        kw = {}
+        if self.is_vit:
+            kw["img_size"] = cfg["VIT_IMG"]
+        elif "coatnet" in cfg["BACKBONE"]:
+            kw["img_size"] = cfg["IMG"]
         self.backbone = timm.create_model(
             cfg["BACKBONE"], pretrained=cfg["PRETRAINED"], num_classes=0, in_chans=3, **kw)
         if cfg["GRAD_CHECKPOINT"]:
