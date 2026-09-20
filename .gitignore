@@ -1,0 +1,29 @@
+# Data — never commit competition data (license terms)
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Experiment artifacts (weights, logs stay local; ledger is tracked)
+experiments/runs/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Secrets
+.kaggle/
+kaggle.json
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
