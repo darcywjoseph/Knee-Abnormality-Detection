@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 kaggle = ["kaggle>=2.2"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["ruff>=0.6"]
 
 [tool.ruff]
 line-length = 100
@@ -27,12 +27,14 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "D"]
+# D107: __init__ arguments are documented in the class docstring (see src/model.py).
+ignore = ["D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"src/train_2p5d.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+# Generated from notebooks/02_baseline_train_2p5d.ipynb by src/nb2script.py; never hand-edited.
+"src/train_2p5d.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "E402", "E501", "I001"]
+# Markdown tables inside notebook cell strings cannot wrap.
+"src/build_cache_v3_notebook.py" = ["E501"]

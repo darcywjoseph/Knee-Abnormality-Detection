@@ -47,8 +47,8 @@ runs/
 notebooks/archive
 notebooks/reference
 
-data/
+data
 
-docs/
+docs
 
-experiments/
+experiments
