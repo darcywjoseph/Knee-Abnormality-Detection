@@ -48,8 +48,7 @@ notebooks/archive
 notebooks/reference
 
 /data
-
 /docs
-
 /experiments
 .claude/
+local/

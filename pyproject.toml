@@ -17,6 +17,13 @@ dependencies = [
     "tqdm>=4.70",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/knee"]
+
 [project.optional-dependencies]
 kaggle = ["kaggle>=2.2"]
 dev = ["ruff>=0.6"]
@@ -34,7 +41,5 @@ ignore = ["D107"]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-# Generated from notebooks/02_baseline_train_2p5d.ipynb by src/nb2script.py; never hand-edited.
-"src/train_2p5d.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "E402", "E501", "I001"]
-# Markdown tables inside notebook cell strings cannot wrap.
-"src/build_cache_v3_notebook.py" = ["E501"]
+# Generated from notebooks/02_baseline_train_2p5d.ipynb by knee.train.export_notebook; never hand-edited.
+"src/knee/train/train_2p5d.py" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "E402", "E501", "I001"]
