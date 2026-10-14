@@ -43,11 +43,11 @@ uv sync --extra dev --extra kaggle
   - `predict_fast.py`, `predict_lean.py`: efficiency submissions, fp16 on every GPU.
     The lean one builds its inputs on the GPU.
   - `rescore.py`: rescores a checkpoint on its fold under several slice views.
-- `notebooks/`: written by hand.
+- `notebooks/`:
   - `02_train`, `03_cache`, `04_predict`: import the package.
   - `02_baseline_train_2p5d`, `03_cache_builder_v3` to `_v6`: standalone Kaggle kernels.
   - `submissions/submition-01` to `-08`: submission kernels. 01 to 05 score our 2.5D fold
-    sets on cache v3, 06 blends them with the public d4 stack, 07 and 08 ensemble our own
+    sets on cache v3, 06 blends them with the public d4 stack, 07 and 08 ensemble
     families over caches v3, v4 and v5.
 - `docs/`, `experiments/`, `data/`, `local/`: private, not in this repository. State, ledger,
   labels, folds, out-of-fold predictions, cloud and Kaggle tooling.
