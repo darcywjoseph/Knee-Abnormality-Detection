@@ -1,9 +1,15 @@
-"""DICOM to cache-v3 preprocessing: one compact uint8 .npz per study.
+"""DICOM to cache preprocessing: one compact uint8 .npz per study.
 
 Each study becomes six series slots (sagittal/coronal/axial fat-suppressed, sagittal
 non-FS, coronal T1, sagittal T1) of uniformly sampled slices, oriented canonically,
 cropped to a fixed physical square and scaled to uint8. Training and inference read the
 npz layout documented on `process_study`.
+
+`CacheConfig()` builds cache v3. `CacheConfig.v4()` builds cache v4: 384 px, a
+fat-suppression test that ignores negated mentions ("non fatsat", "no fs"), InstanceNumber
+before file name as the slice-order fallback, and a `cache_key` member in every npz. Both
+write `order_src` and `patient_id` to the manifest. With the v4 options off, the arrays are
+byte-identical to v3.
 """
 from __future__ import annotations
 
@@ -23,8 +29,9 @@ from tqdm.auto import tqdm
 
 __all__ = [
     "CacheConfig", "DEFAULT_SLOTS", "SLOT_SPEC", "FALLBACK_ORDER", "HDR_TAGS", "ORDER_TAGS",
-    "CANON_SIGN", "to_float", "read_header", "image_centre_x", "classify_contrast",
-    "is_localizer", "pick_slots", "study_laterality", "order_files", "sample_indices",
+    "CANON_SIGN", "to_float", "read_header", "image_centre_x", "fs_in_description",
+    "classify_contrast", "is_localizer", "pick_slots", "study_laterality",
+    "study_patient_id", "order_files", "sample_indices",
     "read_pixels", "crop_mm", "canonical_flips", "resize", "load_series", "out_path",
     "series_metadata", "build_volume", "process_study", "find_root", "load_study_rows",
     "shard_studies", "pending_studies", "build_cache", "write_manifest", "coverage_report",
@@ -49,7 +56,7 @@ HDR_TAGS = [
     "SeriesDescription", "ProtocolName", "SequenceName", "ScanningSequence", "ScanOptions",
     "RepetitionTime", "EchoTime", "InversionTime", "Laterality", "ImageLaterality",
     "PixelSpacing", "Rows", "Columns", "ImageOrientationPatient", "ImagePositionPatient",
-    "PhotometricInterpretation", "SeriesInstanceUID",
+    "PhotometricInterpretation", "SeriesInstanceUID", "PatientID",
 ]
 ORDER_TAGS = ["ImagePositionPatient", "ImageOrientationPatient", "InstanceNumber"]
 
@@ -61,6 +68,10 @@ _RX_T2 = re.compile(r"\bt2\b|t2w|t2_|_t2|t2 ", re.I)
 _RX_PD = re.compile(r"\bpd\b|\bdp\b|proton|dens|pdw", re.I)
 _RX_STIR = re.compile(r"stir|tirm", re.I)
 _RX_FS = re.compile(r"\bfs\b|fat.?sat|spir|spair|fatsup|\bsat\b|fs_|_fs|fs ", re.I)
+# Cache v4: the v3 words plus "fat sup(pressed)" and STIR/TIRM. A mention does not count when
+# a negation word sits right before it, glued or after a separator ("nonfs", "no_fs", "w/o fs").
+_RX_FS_V4 = re.compile(_RX_FS.pattern + r"|fat.?sup|stir|tirm", re.I)
+_RX_FS_NEG = re.compile(r"(?<![a-z0-9])(?:non|no|not|without|w/o|w/out|wo)[\s_\-./]*$", re.I)
 
 
 @dataclass(frozen=True)
@@ -71,13 +82,23 @@ class CacheConfig:
         slots: Slot names in cache order; the training head indexes by position.
         n_slices: Slices stored per slot.
         band: (lo, hi) fractions of the ordered stack to sample between.
-        img: Output side length in pixels.
+        img: Output side length in pixels. The builder takes any size, but
+            knee.common.slice_descriptors (and its copy in the submission kernel) pools each
+            slice on a 20 x 20 grid by reshape, so it needs a multiple of 20: 320 works,
+            v4's 384 raises until that function pools on uneven blocks.
         crop_mm: Side of the physical square centre crop, in mm.
         clip_lo: Lower percentile of the per-series clip that maps to 0.
         clip_hi: Upper percentile of the per-series clip that maps to 255.
         min_slices: A series with fewer files is a localizer and never fills a slot.
         lat_dead_mm: |centre x| below this leaves laterality unknown, so nothing is mirrored.
         compress: Whether the npz is written compressed.
+        fs_negation: Ignore a fat-suppression word in the description when a negation word
+            ("non", "no", "not", "without", "w/o") sits right before it. Off in v3.
+        instance_fallback: When under 80 % of a series' files carry geometry, order its
+            slices by InstanceNumber (if at least 80 % carry one) before falling back to
+            file name. Off in v3, which then keeps the file-name order.
+        cache_key: Names the cache version. Any value but 'cache_v3' is also written into
+            every npz as `cache_key`.
         n_shards: How many shards the corpus is split into (1 disables sharding).
         shard_index: Which shard this run builds.
         n_workers: Pool size; 0 means os.cpu_count().
@@ -95,6 +116,9 @@ class CacheConfig:
     min_slices: int = 6
     lat_dead_mm: float = 20.0
     compress: bool = True
+    fs_negation: bool = False
+    instance_fallback: bool = False
+    cache_key: str = "cache_v3"
     n_shards: int = 3
     shard_index: int = 0
     n_workers: int = 0
@@ -109,6 +133,21 @@ class CacheConfig:
             The length of `slots`.
         """
         return len(self.slots)
+
+    @classmethod
+    def v4(cls, **overrides):
+        """Builds the cache-v4 configuration.
+
+        Args:
+            **overrides: Fields set on top of the v4 settings, such as shard_index.
+
+        Returns:
+            A CacheConfig with img 384, fs_negation and instance_fallback on, and cache_key
+            'cache_v4'.
+        """
+        settings = {"img": 384, "fs_negation": True, "instance_fallback": True,
+                    "cache_key": "cache_v4"}
+        return cls(**{**settings, **overrides})
 
 
 try:
@@ -169,8 +208,8 @@ def read_header(series_path):
 
     Returns:
         A dict with n_files and hdr_ok always present, and, when the header could be read,
-        desc, scan_seq, scan_opts, tr, te, ti, lat_tag, ps_row, ps_col, rows, cols, iop,
-        ipp and centre_x. hdr_ok is 0 when only the file count is known.
+        desc, scan_seq, scan_opts, tr, te, ti, lat_tag, patient_id, ps_row, ps_col, rows,
+        cols, iop, ipp and centre_x. hdr_ok is 0 when only the file count is known.
     """
     files = sorted(p for p in Path(series_path).iterdir() if p.name.lower().endswith(".dcm"))
     h = {"n_files": len(files), "hdr_ok": 0}
@@ -192,6 +231,7 @@ def read_header(series_path):
     lat = str(getattr(ds, "ImageLaterality", "")
               or getattr(ds, "Laterality", "") or "").strip().upper()
     h["lat_tag"] = lat if lat in ("L", "R") else ""
+    h["patient_id"] = str(getattr(ds, "PatientID", "") or "").strip()
     ps = getattr(ds, "PixelSpacing", None)
     h["ps_row"] = to_float(ps[0]) if ps is not None and len(ps) >= 2 else None
     h["ps_col"] = to_float(ps[1]) if ps is not None and len(ps) >= 2 else None
@@ -223,7 +263,25 @@ def image_centre_x(h):
     return float(centre[0])
 
 
-def classify_contrast(h, csv_fs):
+def fs_in_description(desc, ignore_negated=False):
+    """Says whether a series description names fat suppression.
+
+    Args:
+        desc: SeriesDescription, ProtocolName and SequenceName joined by spaces.
+        ignore_negated: Use the v4 test: the v3 words plus "fat sup(pressed)", STIR and TIRM,
+            where a mention directly preceded by a negation word ("non fatsat", "no_fs",
+            "w/o fs", "nonfs") does not count. False is the v3 test, where every mention
+            counts.
+
+    Returns:
+        True when at least one mention counts.
+    """
+    if not ignore_negated:
+        return bool(_RX_FS.search(desc))
+    return any(not _RX_FS_NEG.search(desc[:m.start()]) for m in _RX_FS_V4.finditer(desc))
+
+
+def classify_contrast(h, csv_fs, fs_negation=False):
     """Decides a series' tissue contrast and whether it is fat-suppressed.
 
     Precedence: SeriesDescription words, then TR/TE (TR < 800 ms -> T1; TE > 60 ms -> T2;
@@ -232,13 +290,14 @@ def classify_contrast(h, csv_fs):
     Args:
         h: A header dict from read_header.
         csv_fs: The delivered Fluid_Sensitive flag for this series; truthy forces fs.
+        fs_negation: Whether a negated FS mention in the description is ignored (v4).
 
     Returns:
         The contrast, one of {T1, PD, T2, STIR, GRE, UNK}, and the fat-suppression flag.
     """
     desc = h.get("desc", "") or ""
     opts = {t.strip().upper() for t in re.split(r"[\\/,;]", h.get("scan_opts") or "")}
-    fs = (bool(csv_fs) or bool(_RX_FS.search(desc))
+    fs = (bool(csv_fs) or fs_in_description(desc, fs_negation)
           or bool(opts & {"FS", "FAT_SAT", "FATSAT", "SPIR", "SPAIR"}))
     if _RX_STIR.search(desc) or (h.get("ti") and 80 <= h["ti"] <= 250):
         return "STIR", True
@@ -347,27 +406,45 @@ def study_laterality(meta, lat_dead_mm=20.0):
     return "U", "none"
 
 
-def order_files(series_path):
+def study_patient_id(meta):
+    """Picks the study's PatientID from its series headers.
+
+    Args:
+        meta: One dict per series, with patient_id ('' when the tag was absent).
+
+    Returns:
+        The most frequent non-empty PatientID, the alphabetically first on a tie, or ''
+        when no series carries one.
+    """
+    ids = [m["patient_id"] for m in meta if m.get("patient_id")]
+    return max(sorted(set(ids)), key=ids.count) if ids else ""
+
+
+def order_files(series_path, instance_fallback=False):
     """Sorts a series' files into through-plane order.
 
     Each file is keyed by projecting ImagePositionPatient onto the slice normal, falling
-    back to InstanceNumber and then to the file's position in the directory listing. When
-    fewer than 80 % of files carry usable geometry, the plain name order is kept instead,
-    because a part-geometric sort is worse than none.
+    back to InstanceNumber and then to the file's position in the directory listing. A
+    part-geometric sort is worse than none, so when fewer than 80 % of files carry usable
+    geometry v3 keeps the plain name order, which is random for SOP-UID file names. With
+    instance_fallback the files are then sorted by InstanceNumber when at least 80 % carry
+    one, and only otherwise left in name order.
 
     Args:
         series_path: Directory holding the series' .dcm files.
+        instance_fallback: Try InstanceNumber order before name order (v4).
 
     Returns:
-        The ordered paths and the slice normal as an unquantised vector, or None when no
-        geometry was found.
+        The ordered paths; the slice normal as an unquantised vector, or None when the
+        order is not geometric; and where the order came from: 'geom', 'instance' or
+        'name' ('' when the directory holds no .dcm file).
     """
     files = sorted(p for p in Path(series_path).iterdir() if p.name.lower().endswith(".dcm"))
     if not files:
-        return [], None
-    keys, n_geom, normal = [], 0, None
-    for i, f in enumerate(files):
-        k = None
+        return [], None, ""
+    geom, inst, normal = [], [], None
+    for f in files:
+        g = k = None
         try:
             ds = pydicom.dcmread(str(f), stop_before_pixels=True, force=True,
                                  specific_tags=ORDER_TAGS)
@@ -377,23 +454,31 @@ def order_files(series_path):
                 p = np.asarray([float(x) for x in ipp[:3]])
                 o = np.asarray([float(x) for x in iop[:6]])
                 n = np.cross(o[:3], o[3:])
-                k = float(np.dot(p, n))
-                if np.isfinite(k):
-                    n_geom += 1
-                    normal = n
-                else:
-                    k = None
-            if k is None:
-                inst = getattr(ds, "InstanceNumber", None)
-                if inst is not None:
-                    k = float(inst)
+                d = float(np.dot(p, n))
+                if np.isfinite(d):
+                    g, normal = d, n
+            # v3 reads InstanceNumber only where geometry is missing; keeping that means a
+            # malformed tag on a geometric file cannot change its v3 key.
+            if g is None or instance_fallback:
+                num = getattr(ds, "InstanceNumber", None)
+                if num is not None:
+                    k = float(num)
         except (pydicom.errors.InvalidDicomError, OSError, ValueError, KeyError,
                 AttributeError, TypeError):
-            k = None
-        keys.append(k if k is not None else float(i))
-    if 0 < n_geom < 0.8 * len(files):
-        return files, None
-    return [f for _, f in sorted(zip(keys, files), key=lambda t: t[0])], normal
+            pass
+        geom.append(g)
+        inst.append(k)
+    n_geom = sum(g is not None for g in geom)
+    n_inst = sum(k is not None for k in inst)
+    if n_geom >= 0.8 * len(files) or (n_geom == 0 and not instance_fallback):
+        keys = [g if g is not None else k if k is not None else float(i)
+                for i, (g, k) in enumerate(zip(geom, inst))]
+        order = [f for _, f in sorted(zip(keys, files), key=lambda t: t[0])]
+        return order, normal, "geom" if n_geom else ("instance" if n_inst else "name")
+    if instance_fallback and n_inst >= 0.8 * len(files):
+        idx = sorted(range(len(files)), key=lambda i: (inst[i] is None, inst[i] or 0.0, i))
+        return [files[i] for i in idx], None, "instance"
+    return files, None, "name"
 
 
 def sample_indices(n, k, band):
@@ -505,7 +590,8 @@ def canonical_flips(iop, normal, side):
     return flips
 
 
-def load_series(series_path, h, side, n_slices, img, band, crop, clip_lo, clip_hi):
+def load_series(series_path, h, side, n_slices, img, band, crop, clip_lo, clip_hi,
+                instance_fallback=False):
     """Loads one series into the cache's uint8 slot format.
 
     Slices are ordered, sampled over the central band, physically cropped, resized,
@@ -523,15 +609,16 @@ def load_series(series_path, h, side, n_slices, img, band, crop, clip_lo, clip_h
         crop: Physical crop size in mm.
         clip_lo: Lower percentile of the clip, over the whole sampled stack.
         clip_hi: Upper percentile of the clip.
+        instance_fallback: Passed to order_files.
 
     Returns:
-        A (n_slices, img, img) uint8 array and a note, or (None, note) when the series
-        yielded nothing. The note is 'ok', 'partial:<n>' with the count of substituted
-        slices, 'no_dcm' or 'all_slices_failed'.
+        A (n_slices, img, img) uint8 array, or None when the series yielded nothing; a
+        note, one of 'ok', 'partial:<n>' with the count of substituted slices, 'no_dcm' or
+        'all_slices_failed'; and the slice-order source from order_files.
     """
-    files, normal = order_files(series_path)
+    files, normal, order_src = order_files(series_path, instance_fallback)
     if not files:
-        return None, "no_dcm"
+        return None, "no_dcm", order_src
     idx = sample_indices(len(files), n_slices, band)
     planes, bad = [], 0
     for i in idx:
@@ -544,7 +631,7 @@ def load_series(series_path, h, side, n_slices, img, band, crop, clip_lo, clip_h
         planes.append(resize(cropped, img).astype(np.float32))
     good = [p for p in planes if p is not None]
     if not good:
-        return None, "all_slices_failed"
+        return None, "all_slices_failed", order_src
     last = None
     for j, p in enumerate(planes):
         if p is None:
@@ -557,7 +644,7 @@ def load_series(series_path, h, side, n_slices, img, band, crop, clip_lo, clip_h
     lo, hi = np.percentile(vol, (clip_lo, clip_hi))
     vol = np.clip((vol - lo) / max(hi - lo, 1e-6), 0, 1)
     return (np.ascontiguousarray((vol * 255.0).round().astype(np.uint8)),
-            f"partial:{bad}" if bad else "ok")
+            f"partial:{bad}" if bad else "ok", order_src)
 
 
 def out_path(study, out_dir):
@@ -591,11 +678,11 @@ def series_metadata(study, rows, series_dir, cfg):
         uid = str(r["SeriesInstanceUID"])
         path = Path(series_dir) / str(study) / uid
         h = read_header(path) if path.is_dir() else {"n_files": 0, "hdr_ok": 0}
-        contrast, fs = classify_contrast(h, r.get("Fluid_Sensitive", 0))
+        contrast, fs = classify_contrast(h, r.get("Fluid_Sensitive", 0), cfg.fs_negation)
         m = {"uid": uid, "plane": str(r.get("Anatomical_Plane", "")), "fs": fs,
              "contrast": contrast, "n_files": h.get("n_files", 0),
              "localizer": is_localizer(h, cfg.min_slices), "lat_tag": h.get("lat_tag", ""),
-             "centre_x": h.get("centre_x"), "h": h}
+             "centre_x": h.get("centre_x"), "patient_id": h.get("patient_id", ""), "h": h}
         meta.append(m)
         meta_rows.append({"StudyInstanceUID": study, "SeriesInstanceUID": uid,
                           "plane": m["plane"],
@@ -604,7 +691,7 @@ def series_metadata(study, rows, series_dir, cfg):
                           "n_files": m["n_files"], "localizer": int(m["localizer"]),
                           "tr": h.get("tr"), "te": h.get("te"), "lat_tag": m["lat_tag"],
                           "centre_x": m["centre_x"], "ps_row": h.get("ps_row"),
-                          "desc": (h.get("desc") or "")[:80]})
+                          "patient_id": m["patient_id"], "desc": (h.get("desc") or "")[:80]})
     return meta, meta_rows
 
 
@@ -623,19 +710,21 @@ def build_volume(study, picks, by_uid, series_dir, side, cfg):
         cfg: The CacheConfig for this run.
 
     Returns:
-        The (n_slots, n_slices, img, img) uint8 array, the uint8 presence mask, and the
-        per-slot notes as '<slot index>:<note>' strings.
+        The (n_slots, n_slices, img, img) uint8 array, the uint8 presence mask, the per-slot
+        notes as '<slot index>:<note>' strings, and the slice-order source per slot ('geom',
+        'instance' or 'name'; '' where the slot is empty).
     """
     arr = np.zeros((cfg.n_slots, cfg.n_slices, cfg.img, cfg.img), dtype=np.uint8)
     present = np.zeros(cfg.n_slots, dtype=np.uint8)
-    notes = []
+    notes, order_src = [], [""] * cfg.n_slots
     for s, uid in enumerate(picks):
         if uid is None:
             continue
         path = Path(series_dir) / str(study) / uid
         try:
-            vol, note = load_series(path, by_uid[uid]["h"], side, cfg.n_slices, cfg.img,
-                                    cfg.band, cfg.crop_mm, cfg.clip_lo, cfg.clip_hi)
+            vol, note, src = load_series(path, by_uid[uid]["h"], side, cfg.n_slices, cfg.img,
+                                         cfg.band, cfg.crop_mm, cfg.clip_lo, cfg.clip_hi,
+                                         cfg.instance_fallback)
         # Deliberate isolation point: one unreadable series must cost its slot, not the
         # study. The exception type is recorded in the manifest note.
         except Exception as e:
@@ -645,9 +734,10 @@ def build_volume(study, picks, by_uid, series_dir, side, cfg):
             continue
         arr[s] = vol
         present[s] = 1
+        order_src[s] = src
         if note != "ok":
             notes.append(f"{s}:{note}")
-    return arr, present, notes
+    return arr, present, notes, order_src
 
 
 def process_study(study, study_rows, series_dir, out_dir, cfg=CacheConfig()):
@@ -659,7 +749,9 @@ def process_study(study, study_rows, series_dir, out_dir, cfg=CacheConfig()):
       present: uint8 (n_slots,), 1 where the slot was filled;
       side: 0-d string array, the study's laterality ('L', 'R' or 'U');
       slot_uids: string (n_slots,), the SeriesInstanceUID behind each slot, '' when empty;
-      slot_fallback: uint8 (n_slots,), 1 where an FS slot was filled by a non-FS series.
+      slot_fallback: uint8 (n_slots,), 1 where an FS slot was filled by a non-FS series;
+      cache_key: 0-d string array naming the cache version, e.g. 'cache_v4'. Absent from
+        v3 files, whose layout is unchanged.
 
     Written atomically: the array goes to a .tmp.npz that is renamed into place, so an
     interrupted shard leaves no half-written file for the resume pass to trust.
@@ -674,11 +766,13 @@ def process_study(study, study_rows, series_dir, out_dir, cfg=CacheConfig()):
     Returns:
         A manifest record and one metadata row per series. The record's status is 'ok',
         'skip' when the file already exists, 'empty' when no slot could be filled, or
-        'fail' with the traceback in its note.
+        'fail' with the traceback in its note. Its order_src holds the slice-order source
+        per slot joined by '|' ('geom', 'instance' or 'name'; empty for an empty slot), and
+        its patient_id the study's PatientID ('' when absent).
     """
     dst = out_path(study, out_dir)
     rec = {"StudyInstanceUID": study, "status": "ok", "slots": "", "side": "",
-           "side_src": "", "fallback": "", "note": ""}
+           "side_src": "", "fallback": "", "order_src": "", "patient_id": "", "note": ""}
     meta_rows = []
     try:
         if dst.is_file() and dst.stat().st_size > 0:
@@ -686,10 +780,12 @@ def process_study(study, study_rows, series_dir, out_dir, cfg=CacheConfig()):
             return rec, meta_rows
 
         meta, meta_rows = series_metadata(study, study_rows.get(study, []), series_dir, cfg)
+        rec["patient_id"] = study_patient_id(meta)
         side, side_src = study_laterality(meta, cfg.lat_dead_mm)
         picks, fallback = pick_slots(meta, cfg.slots)
         by_uid = {m["uid"]: m for m in meta}
-        arr, present, notes = build_volume(study, picks, by_uid, series_dir, side, cfg)
+        arr, present, notes, order_src = build_volume(study, picks, by_uid, series_dir, side,
+                                                      cfg)
 
         if present.sum() == 0:
             rec.update(status="empty", note=";".join(notes))
@@ -697,12 +793,14 @@ def process_study(study, study_rows, series_dir, out_dir, cfg=CacheConfig()):
 
         tmp = dst.with_suffix(".tmp.npz")
         save = np.savez_compressed if cfg.compress else np.savez
+        key = {} if cfg.cache_key == "cache_v3" else {"cache_key": np.array(cfg.cache_key)}
         save(tmp, vol=arr, present=present, side=np.array(side),
              slot_uids=np.array([u or "" for u in picks]),
-             slot_fallback=np.array(fallback, dtype=np.uint8))
+             slot_fallback=np.array(fallback, dtype=np.uint8), **key)
         os.replace(tmp, dst)
         rec.update(slots="".join(str(int(x)) for x in present), side=side, side_src=side_src,
-                   fallback="".join(str(int(x)) for x in fallback), note=";".join(notes))
+                   fallback="".join(str(int(x)) for x in fallback),
+                   order_src="|".join(order_src), note=";".join(notes))
         return rec, meta_rows
     # Deliberate isolation point: this is the whole body of a pool worker, and a shard of
     # 1500 studies must not die on one of them. The traceback goes into the manifest.
@@ -894,9 +992,12 @@ def write_manifest(records, meta_rows, out_dir, split="train", shard_index=0):
     meta_path = out_dir.parent / f"series_meta_{tag}.csv"
 
     new = pd.DataFrame(records) if records else pd.DataFrame(
-        columns=["StudyInstanceUID", "status", "slots", "side", "side_src", "fallback", "note"])
+        columns=["StudyInstanceUID", "status", "slots", "side", "side_src", "fallback",
+                 "order_src", "patient_id", "note"])
     if man_path.is_file():
-        new = (pd.concat([pd.read_csv(man_path), new], ignore_index=True)
+        # Read patient_id back as text: an all-digit ID must not become a number.
+        old = pd.read_csv(man_path, dtype={"patient_id": str})
+        new = (pd.concat([old, new], ignore_index=True)
                  .drop_duplicates("StudyInstanceUID", keep="last"))
     new.to_csv(man_path, index=False)
 
@@ -946,6 +1047,16 @@ def coverage_report(manifest_df, meta_df, out_dir, n_in_scope, cfg=CacheConfig()
                        for s in done.fallback.astype(str).str.zfill(cfg.n_slots)])
         lines.append("fallback-filled fraction per slot: "
                      f"{dict(zip(cfg.slots, fb.mean(axis=0).round(3)))}")
+        if "order_src" in done:
+            src = done.order_src.fillna("").astype(str).str.split("|").explode()
+            lines.append(f"slice order source (filled slots): "
+                         f"{src[src != ''].value_counts().to_dict()}")
+    if "patient_id" in manifest_df:
+        pid = manifest_df.patient_id.fillna("").astype(str)
+        per_patient = pid[pid != ""].value_counts()
+        lines.append(f"patient_id: {int(per_patient.sum())} studies carry one | "
+                     f"{len(per_patient)} patients | {int((per_patient > 1).sum())} "
+                     f"with several studies")
     if len(meta_df):
         lines.append("\ncontrast x fs x plane (all series seen):")
         lines.append(pd.crosstab([meta_df.plane, meta_df.contrast], meta_df.fs).to_string())

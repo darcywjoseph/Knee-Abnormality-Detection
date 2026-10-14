@@ -91,12 +91,14 @@ def notebook_cells(path: Path) -> list[tuple[str, str]]:
     return [(f"cell {i}", s) for i, s in enumerate(sources)]
 
 
-def inference_cells(work_dir: Path, tta_passes: int) -> list[tuple[str, str]]:
+def inference_cells(work_dir: Path, tta_passes: int,
+                    notebook: Path = NOTEBOOK) -> list[tuple[str, str]]:
     """Extracts the kernel's inference cells in order, with its Kaggle paths rewritten.
 
     Args:
         work_dir: Directory standing in for /kaggle/working.
         tta_passes: Number of TTA offsets to keep; 1 halves the dry run's wall clock.
+        notebook: The submission notebook to read.
 
     Returns:
         (marker, patched source) pairs, in execution order.
@@ -104,16 +106,16 @@ def inference_cells(work_dir: Path, tta_passes: int) -> list[tuple[str, str]]:
     Raises:
         ValueError: A marker matches no code cell, or more than one.
     """
-    with open(NOTEBOOK, encoding="utf-8") as f:
-        notebook = json.load(f)
-    cells = ["".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code"]
+    with open(notebook, encoding="utf-8") as f:
+        loaded = json.load(f)
+    cells = ["".join(c["source"]) for c in loaded["cells"] if c["cell_type"] == "code"]
 
     out = []
     for marker in MARKERS:
         hits = [c for c in cells if marker in c]
         if len(hits) != 1:
             raise ValueError(f"marker {marker!r} matched {len(hits)} code cells in "
-                             f"{NOTEBOOK.name}; the kernel has changed")
+                             f"{notebook.name}; the kernel has changed")
         source = hits[0].replace("/kaggle/working", str(work_dir))
         if marker == "def load_study" and tta_passes == 1:
             source = source.replace("TTA_OFFSETS = [0, 1]",
@@ -167,6 +169,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="TTA passes; 1 (default) halves the wall clock")
     p.add_argument("--work-dir", type=Path, default=Path("/tmp/infer_dryrun"),
                    help="stands in for /kaggle/working")
+    p.add_argument("--kernel", type=Path, default=NOTEBOOK,
+                   help="submission notebook whose inference cells are run")
     p.add_argument("--notebook", type=Path,
                    help="run every code cell of this notebook instead of the kernel's "
                         "inference cells; for checking a bundled kernel")
@@ -230,11 +234,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DRY RUN PASSED in {(time.time() - started) / 60:.1f} min")
         return 0
 
-    cells = inference_cells(work_dir, args.tta)
+    cells = inference_cells(work_dir, args.tta, args.kernel.resolve())
 
-    # find_checkpoints() searches "/kaggle/input", "weights", "runs" and "." relative to the
-    # working directory, and insists on exactly one directory holding a full fold set. Running
-    # from inside the chosen weights directory is what pins it to those checkpoints.
+    # find_checkpoints() searches the Kaggle input mounts, "weights", "runs" and "." relative
+    # to the working directory and uses every complete fold set it finds. Running from inside
+    # the chosen weights directory is what pins it to those checkpoints.
     namespace = {
         "__name__": "__main__",
         "Path": Path, "np": np, "pd": pd, "time": time,

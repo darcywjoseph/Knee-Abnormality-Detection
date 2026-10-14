@@ -20,7 +20,8 @@ def parse_args():
     d = InferConfig()
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--comp-dir", default="data", help="competition mount, tried first")
-    p.add_argument("--weights", required=True, help="directory holding best_fold*.pt")
+    p.add_argument("--weights", required=True,
+                   help="directory holding one or more complete fold sets of checkpoints")
     p.add_argument("--work-dir", default="/tmp/predict",
                    help="holds cache/ and the submission.csv that is written")
     p.add_argument("--tta", type=int, default=len(d.tta_offsets), help="TTA passes")
@@ -57,7 +58,7 @@ def main():
 
     ckpts = find_checkpoints(cfg.n_folds, bases=[Path(args.weights)])
     models = load_models(ckpts, cfg)
-    print(f"{len(models)} models loaded from {ckpts[0].parent} | device {cfg.device}")
+    print(f"{len(models)} models loaded | device {cfg.device}")
     write_submission(models, studies, work_dir / "submission.csv", cfg)
     print(f"wrote {work_dir / 'submission.csv'}")
 

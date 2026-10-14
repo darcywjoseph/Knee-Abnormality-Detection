@@ -1,8 +1,10 @@
 """Inference: cached studies in, `submission.csv` out.
 
-Loads one checkpoint per fold, scores every cached study under TTA, averages the folds by
-per-label rank and writes the submission. The time budget is sized from a probe over the first
-studies, so a slow machine drops TTA passes and then folds rather than running out of clock.
+Loads every complete fold set of checkpoints it can find (several recipes, seeds or the
+best-epoch and SWA twins of one run), each built from the training config stored in its
+checkpoint, scores every cached study under TTA, averages the members by per-label rank and
+writes the submission. The time budget is sized from a probe over the first studies, so a slow
+machine drops TTA passes and then members rather than running out of clock.
 """
 from __future__ import annotations
 
@@ -19,8 +21,9 @@ from knee.common import TARGETS, slice_descriptors
 from knee.model import Model2p5D
 
 __all__ = [
-    "InferConfig", "REF_SLOT", "MIN_MARGIN", "find_checkpoints", "load_models", "slice_flips",
-    "load_study", "predict", "rank_mean", "fit_budget", "write_submission",
+    "InferConfig", "REF_SLOT", "MIN_MARGIN", "checkpoint_roots", "find_checkpoints",
+    "model_from_checkpoint", "load_models", "slice_flips", "load_study", "predict", "rank_mean",
+    "fit_budget", "write_submission",
 ]
 
 # Slot -> same-plane reference slot. Some slots are stored back to front relative to their
@@ -28,21 +31,25 @@ __all__ = [
 REF_SLOT = {3: 0, 5: 0, 4: 1}
 MIN_MARGIN = 0.02
 
-# Directories searched for checkpoints, in order; a Kaggle dataset mount wins.
-CKPT_BASES = (Path("/kaggle/input"), Path("weights"), Path("runs"), Path("."))
+# Where checkpoints are looked for, in order. On Kaggle every attached dataset or kernel output
+# is a child of /kaggle/input (newer images: of /kaggle/input/datasets). The competition mount
+# is a child too and is skipped by name: walking its DICOM tree takes about 25 minutes.
+CKPT_BASES = (Path("/kaggle/input/datasets"), Path("/kaggle/input"), Path("weights"),
+              Path("runs"), Path("."))
+SKIP_DIRS = {"competitions", "datasets", "rsna-knee-abnormality-detection"}
+# Checkpoint kinds a training run writes, as the prefix of `<kind>_fold<k>.pt`.
+CKPT_KINDS = ("best", "swa")
 
-MODEL_CFG = {
-    "BACKBONE": "convnext_tiny",
-    "N_SLOTS": 6,
-    "ATTN_DIM": 128,
-    "DROPOUT": 0.2,
-    "SLICE_STRIDE": 2,
-    "IMG": 320,
-    # Inference-only settings, fixed: the architecture must match the checkpoints exactly.
-    "PRETRAINED": False,
-    "GRAD_CHECKPOINT": False,
-    "HEAD": "attn_pool",
+# Values for keys an older checkpoint's training config may lack.
+MODEL_DEFAULTS = {
+    "N_SLOTS": 6, "ATTN_DIM": 128, "DROPOUT": 0.2, "HEAD": "concat", "HEAD_HIDDEN": 256,
+    "SLOT_EMB": False, "POS_EMB": False, "SLICE_STRIDE": 2, "IMG": 320, "MODEL_IMG": None,
+    "CACHE_SLICES": 24,
 }
+# Training-only settings that must be off at inference: no internet, no backward pass.
+INFER_OVERRIDES = {"PRETRAINED": False, "GRAD_CHECKPOINT": False}
+# The settings that decide how a study is turned into model input; every member must agree.
+INPUT_KEYS = ("SLICE_STRIDE", "IMG", "MODEL_IMG", "N_SLOTS")
 
 
 def _default_device() -> str:
@@ -65,8 +72,9 @@ class InferConfig:
         comp_dir: Competition mount, tried before the standard Kaggle locations.
         split: Which split to predict.
         out_dir: Cache directory holding one <study>.npz per study.
-        model_cfg: Architecture of the checkpoints; must match how they were trained.
-        n_folds: Fold checkpoints that make up one complete run.
+        model_cfg: How a study is turned into model input (`INPUT_KEYS`); `load_models`
+            overwrites it with the values shared by every loaded checkpoint.
+        n_folds: Fold checkpoints that make up one complete set.
         tta_offsets: Slice-sampling offsets, one forward pass each.
         reserve_s: Seconds held back from the budget for writing the submission.
         budget_h: Wall clock the whole kernel gets.
@@ -77,7 +85,8 @@ class InferConfig:
     comp_dir: str = "/kaggle/input/rsna-knee-abnormality-detection"
     split: str = "test"
     out_dir: str = "/tmp/cache"
-    model_cfg: dict = field(default_factory=lambda: dict(MODEL_CFG))
+    model_cfg: dict = field(
+        default_factory=lambda: {k: MODEL_DEFAULTS[k] for k in INPUT_KEYS})
     n_folds: int = 5
     tta_offsets: tuple[int, ...] = (0, 1)
     reserve_s: int = 900
@@ -86,54 +95,131 @@ class InferConfig:
     seed: int = 42
 
 
-def find_checkpoints(n_folds: int = 5, bases: list[Path] | None = None) -> list[Path]:
-    """Finds the fold checkpoints of one training run.
+def checkpoint_roots(bases) -> list[Path]:
+    """Lists the directories whose trees are searched for checkpoints.
 
-    Searches for `best_fold*.pt` and groups the hits by directory. Only a directory holding
-    all `n_folds` folds is usable, so a half-uploaded weights dataset fails loudly here
-    rather than quietly scoring with three folds.
+    A Kaggle input base is expanded into its children so that the competition mount can be
+    left out by name; every other base is searched whole.
 
     Args:
-        n_folds: How many folds a complete run has.
-        bases: Directories to search, or None for the standard ones.
+        bases: Candidate base directories; missing ones are ignored.
 
     Returns:
-        The fold checkpoint paths, ordered by fold number.
+        Existing directories to walk.
+    """
+    roots = []
+    for base in bases:
+        base = Path(base)
+        if not base.is_dir():
+            continue
+        if base == Path("/kaggle/input") or base.parent == Path("/kaggle/input"):
+            roots.extend(c for c in sorted(base.iterdir())
+                         if c.is_dir() and c.name not in SKIP_DIRS)
+        else:
+            roots.append(base)
+    return roots
+
+
+def find_checkpoints(n_folds: int = 5, bases=None) -> list[Path]:
+    """Finds every complete fold set of checkpoints and lists their paths, fold-major.
+
+    A set is the `best_fold<k>.pt` or `swa_fold<k>.pt` files of one directory. Only a set
+    holding all `n_folds` folds is used, so a half-uploaded weights dataset is reported and
+    skipped rather than quietly scored with three folds. Several complete sets, such as two
+    recipes, two seeds, or the best-epoch and SWA twins of one run, all become members.
+
+    Args:
+        n_folds: How many folds a complete set has.
+        bases: Directories to search, or None for `CKPT_BASES`.
+
+    Returns:
+        Every set's fold 0, then every set's fold 1, and so on, so that trimming the tail under
+        a time budget keeps each set represented.
 
     Raises:
-        SystemExit: No directory holds a complete set of folds, or more than one does.
+        SystemExit: No complete set was found, or one set is present twice.
     """
-    by_dir = {}
-    for base in list(CKPT_BASES if bases is None else bases):
-        if Path(base).is_dir():
-            for path in sorted(Path(base).rglob("best_fold*.pt")):
-                by_dir.setdefault(path.parent, {})[path.stem.replace("best_fold", "")] = path
-    complete = {d: v for d, v in by_dir.items() if len(v) == n_folds}
-    if len(complete) != 1:
-        raise SystemExit(
-            f"need exactly one directory with all {n_folds} folds, found {len(complete)}: "
-            f"{ {str(d): sorted(v) for d, v in by_dir.items()} }")
-    folds = next(iter(complete.values()))
-    return [folds[k] for k in sorted(folds)]
+    t0 = time.time()
+    sets: dict[tuple[Path, str], dict[int, Path]] = {}
+    for root in checkpoint_roots(CKPT_BASES if bases is None else bases):
+        for path in root.rglob("*_fold*.pt"):
+            kind, _, fold = path.stem.partition("_fold")
+            if kind in CKPT_KINDS and fold.isdigit():
+                sets.setdefault((path.parent, kind), {})[int(fold)] = path
+    complete = {k: v for k, v in sets.items() if set(v) == set(range(n_folds))}
+    for (d, kind), v in sorted(sets.items()):
+        if (d, kind) not in complete:
+            print(f"skipping {d} ({kind}): folds {sorted(v)} of {n_folds}")
+    if not complete:
+        raise SystemExit(f"no directory holds all {n_folds} folds of any checkpoint kind; "
+                         f"searched {[str(b) for b in (CKPT_BASES if bases is None else bases)]}")
+    keys = sorted(complete)
+    # The same set attached twice (two datasets holding the same run) would count double.
+    seen: dict[tuple, Path] = {}
+    for key in keys:
+        sig = (key[1], tuple(complete[key][f].stat().st_size for f in range(n_folds)))
+        if sig in seen:
+            raise SystemExit(f"{key[0]} duplicates {seen[sig]} (same kind and file sizes); "
+                             "attach each run once")
+        seen[sig] = key[0]
+    for d, kind in keys:
+        print(f"set: {d} ({kind})")
+    print(f"checkpoint search: {len(keys)} sets x {n_folds} folds in {time.time() - t0:.1f} s")
+    return [complete[key][fold] for fold in range(n_folds) for key in keys]
+
+
+def model_from_checkpoint(path, device: str):
+    """Builds a model from the training config stored in a checkpoint and loads its weights.
+
+    Args:
+        path: A checkpoint written by `knee.train` (holds `model` and `cfg`).
+        device: Torch device string.
+
+    Returns:
+        The model in eval mode and the config it was built from.
+
+    Raises:
+        SystemExit: The checkpoint carries no training config.
+    """
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    if "cfg" not in ckpt or "model" not in ckpt:
+        raise SystemExit(f"{path} carries no training config; cannot rebuild its architecture")
+    cfg = dict(MODEL_DEFAULTS)
+    cfg.update({k: v for k, v in ckpt["cfg"].items() if v is not None})
+    cfg.update(INFER_OVERRIDES)
+    model = Model2p5D(cfg).to(device).eval()
+    model.load_state_dict(ckpt["model"], strict=True)
+    return model, cfg
 
 
 def load_models(paths, cfg: InferConfig) -> list[Model2p5D]:
-    """Builds and loads one model per checkpoint, in eval mode.
+    """Loads one model per checkpoint, each built from its own stored config.
+
+    Every checkpoint must agree on how its input is built; the shared values are written to
+    `cfg.model_cfg`, which `load_study` reads.
 
     Args:
-        paths: Fold checkpoint paths.
-        cfg: The run's configuration; reads `model_cfg` and `device`.
+        paths: Checkpoint paths, as returned by `find_checkpoints`.
+        cfg: The run's configuration; reads `device`, writes `model_cfg`.
 
     Returns:
-        The loaded models.
+        The loaded models, in the order of `paths`.
+
+    Raises:
+        SystemExit: The checkpoints disagree on their input, or one needs upsampled input.
     """
-    models = []
+    models, inputs = [], []
     for path in paths:
-        model = Model2p5D(cfg.model_cfg).to(cfg.device).eval()
-        state = torch.load(path, map_location="cpu")
-        state = state.get("model", state.get("state_dict", state))
-        model.load_state_dict(state, strict=True)
+        model, mcfg = model_from_checkpoint(path, cfg.device)
         models.append(model)
+        inputs.append({k: mcfg.get(k) for k in INPUT_KEYS})
+        print(f"  {path.parent.name}/{path.name}: {mcfg['BACKBONE']} | head {mcfg['HEAD']}")
+    if any(i != inputs[0] for i in inputs):
+        raise SystemExit(f"checkpoints disagree on their input settings: {inputs}")
+    if inputs[0]["MODEL_IMG"] not in (None, inputs[0]["IMG"]):
+        raise SystemExit("a checkpoint was trained on upsampled input (MODEL_IMG), which this "
+                         "inference path does not build")
+    cfg.model_cfg = dict(inputs[0])
     return models
 
 

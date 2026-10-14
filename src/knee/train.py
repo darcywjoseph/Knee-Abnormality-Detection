@@ -6,6 +6,7 @@ next to the checkpoint.
 """
 from __future__ import annotations
 
+import copy
 import dataclasses
 import gc
 import json
@@ -49,6 +50,8 @@ class TrainConfig:
         BACKBONE: timm model name; "vit" in the name switches on the ViT path.
         PRETRAINED: Load timm pretrained weights.
         VIT_IMG: ViT input side, a multiple of the patch size.
+        MODEL_IMG: Input side for a non-ViT backbone when it differs from the cache side;
+            the dataset resizes to it. None feeds the cache side.
         VIT_UNFREEZE: How many trailing blocks train; >= depth means a full fine-tune.
         VIT_LLRD: Layer-wise LR decay across the unfrozen blocks.
         VIT_LR_BACKBONE: Base LR of the last ViT block.
@@ -60,11 +63,19 @@ class TrainConfig:
         SLICE_DIR_FIX: Path to the slice-direction table, or None.
         SLICE_STRIDE: Read every n-th cache slice.
         ATTN_DIM: Width of the concat head's attention gate.
-        HEAD: "concat" or "label_attn".
-        HEAD_HIDDEN: label_attn only: width of the attention MLP.
+        HEAD: "concat", "label_attn" or "all_slice" (one gated attention over every slice of
+            every slot, with a learned slot vector; I5 design a).
+        HEAD_HIDDEN: label_attn and all_slice: width of the attention MLP.
         SLOT_EMB: label_attn only: add a learned per-slot vector to each slice embedding.
+        POS_EMB: Add a learned vector per (slot, slice position) to each slice embedding
+            before pooling, so the order-blind pool can tell where in the stack a slice
+            sits; pair it with SLICE_DIR_FIX so that position means the same thing in
+            every study.
         DROPOUT: Head dropout.
+        DROP_PATH: Stochastic-depth rate of the CNN backbone; 0 leaves timm's default off.
         EPOCHS: Epochs to run.
+        SWA_EPOCHS: Average the weights (and BatchNorm statistics) at the end of this many
+            final epochs into one model, scored and saved beside the best epoch. 0 disables.
         BATCH_SIZE: Studies per step.
         GRAD_ACCUM: Steps accumulated before an optimizer step.
         GRAD_CHECKPOINT: Recompute backbone activations instead of storing them.
@@ -79,6 +90,8 @@ class TrainConfig:
         GOLD_WEIGHT: Sample weight of an expert-labelled study.
         CONF_WEIGHT: Weight each label by the extractor's confidence.
         CONF_FLOOR: Smallest confidence weight.
+        POS_WEIGHT: Twelve per-label multipliers on the loss of LLM rows whose target is
+            >= 0.5, in TARGETS order, or None for no positive re-weighting.
         AUG: Spatial and intensity augmentation on the training split.
         AUG_ROT_DEG: Rotation range in degrees.
         AUG_SCALE: Scale range.
@@ -102,6 +115,7 @@ class TrainConfig:
     BACKBONE: str = "convnext_tiny"
     PRETRAINED: bool = True
     VIT_IMG: int = 224
+    MODEL_IMG: int | None = None
     VIT_UNFREEZE: int = 6
     VIT_LLRD: float = 0.78
     VIT_LR_BACKBONE: float = 1.5e-5
@@ -122,9 +136,12 @@ class TrainConfig:
     HEAD: str = "concat"
     HEAD_HIDDEN: int = 256
     SLOT_EMB: bool = False
+    POS_EMB: bool = False
     DROPOUT: float = 0.2
+    DROP_PATH: float = 0.0
 
     EPOCHS: int = 6
+    SWA_EPOCHS: int = 0
     BATCH_SIZE: int = 2
     GRAD_ACCUM: int = 8
     GRAD_CHECKPOINT: bool = True
@@ -139,6 +156,7 @@ class TrainConfig:
     GOLD_WEIGHT: float = 3.0
     CONF_WEIGHT: bool = True
     CONF_FLOOR: float = 0.25
+    POS_WEIGHT: list[float] | None = None
     # One random draw per study, so every slot and slice moves together. No flips: the
     # cache normalises laterality and a flip would undo it.
     AUG: bool = True
@@ -279,8 +297,10 @@ def build_optimizer(cfg: TrainConfig, model) -> tuple[torch.optim.Optimizer, lis
     Returns:
         The optimizer and, per parameter group, whether it is the head group.
     """
+    # The head group is everything trained from scratch: head, pool and the position
+    # embedding; it gets HEAD_LR_MULT and trains during the head-only stage.
     head_params = [p for n, p in model.named_parameters()
-                   if p.requires_grad and n.startswith(("head", "pool"))]
+                   if p.requires_grad and n.startswith(("head", "pool", "pos_emb"))]
     if model.is_vit:
         n_blk = len(model.backbone.blocks)
         groups = [{"params": head_params, "lr": cfg.VIT_LR_HEAD}]
@@ -295,7 +315,7 @@ def build_optimizer(cfg: TrainConfig, model) -> tuple[torch.optim.Optimizer, lis
         print("ViT param groups:", [(len(g["params"]), f"{g['lr']:.2e}") for g in groups])
     else:
         trunk_params = [p for n, p in model.named_parameters()
-                        if p.requires_grad and not n.startswith(("head", "pool"))]
+                        if p.requires_grad and not n.startswith(("head", "pool", "pos_emb"))]
         optimizer = torch.optim.AdamW(
             [{"params": trunk_params, "lr": cfg.LR},
              {"params": head_params, "lr": cfg.LR * cfg.HEAD_LR_MULT}],
@@ -491,12 +511,45 @@ class FitResult:
         best_preds: Validation probabilities of the saved epoch, or None if no epoch ran.
         best_epoch: Which epoch the checkpoint holds, -1 if none.
         best_score: Its mean weak AUC, -inf if no epoch scored.
+        swa_preds: Validation probabilities of the weight-averaged model, or None when
+            SWA_EPOCHS is 0 or training stopped before the averaging window.
+        swa_score: Its mean weak AUC, NaN if there is no averaged model.
     """
 
     history: list[dict] = field(default_factory=list)
     best_preds: np.ndarray | None = None
     best_epoch: int = -1
     best_score: float = float("-inf")
+    swa_preds: np.ndarray | None = None
+    swa_score: float = float("nan")
+
+
+def swa_update(state, n_avg: int, model):
+    """Folds the model's current weights into a running equal-weight average.
+
+    Floating-point tensors, which are the parameters and the BatchNorm running statistics,
+    are averaged; integer buffers such as `num_batches_tracked` are copied from the latest
+    weights. This is what `AveragedModel(use_buffers=True)` computes, done by hand because
+    torch 2.6 rejects that class's integer division on the integer buffers.
+
+    Args:
+        state: The running average so far, or None before the first update.
+        n_avg: How many weight sets `state` already averages.
+        model: The model whose current weights join the average.
+
+    Returns:
+        The updated state dict and count.
+    """
+    current = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    if state is None:
+        return current, 1
+    n = n_avg + 1
+    for k, v in current.items():
+        if v.is_floating_point():
+            state[k].mul_((n - 1) / n).add_(v, alpha=1.0 / n)
+        else:
+            state[k].copy_(v)
+    return state, n
 
 
 def fit(cfg: TrainConfig, model, train_dl, valid_dl, out_dir, t0: float | None = None):
@@ -533,6 +586,7 @@ def fit(cfg: TrainConfig, model, train_dl, valid_dl, out_dir, t0: float | None =
     # finishes and writes no checkpoint at all.
     result = FitResult()
     stop = False
+    swa_state, n_avg = None, 0
 
     for epoch in range(cfg.EPOCHS):
         model.train()
@@ -592,10 +646,32 @@ def fit(cfg: TrainConfig, model, train_dl, valid_dl, out_dir, t0: float | None =
             print(f"  saved best_fold{cfg.FOLD}.pt"
                   + ("" if improved else " (fallback: score is NaN)"))
 
+        # Equal-weight average of the epoch-end weights over the last SWA_EPOCHS epochs,
+        # BatchNorm running statistics included, so the averaged model needs no extra pass
+        # over the training set to recalibrate them.
+        if cfg.SWA_EPOCHS and epoch >= cfg.EPOCHS - cfg.SWA_EPOCHS:
+            swa_state, n_avg = swa_update(swa_state, n_avg, model)
+
         gc.collect()
         torch.cuda.empty_cache()
         if stop:
             break
+
+    if swa_state is not None:
+        print(f"\nSWA: average of the last {n_avg} epoch-end weights")
+        swa_model = copy.deepcopy(model)
+        swa_model.load_state_dict(swa_state)
+        preds, mean_weak, weak_auc, gold_auc = evaluate(cfg, swa_model, valid_dl, valid_df,
+                                                        use_amp)
+        result.history.append({"epoch": f"swa{n_avg}", "train_loss": float("nan"),
+                               "mean_weak_auc": mean_weak,
+                               "mean_gold_auc": safe_nanmean(gold_auc)})
+        print(f"swa{n_avg}: mean weak AUC {mean_weak:.4f}")
+        torch.save({"model": swa_state, "cfg": cfg.as_dict(), "fold": cfg.FOLD,
+                    "epoch": f"swa{n_avg}", "mean_weak_auc": mean_weak,
+                    "weak_auc": weak_auc.tolist(), "gold_auc": gold_auc.tolist()},
+                   out_dir / f"swa_fold{cfg.FOLD}.pt")
+        result.swa_preds, result.swa_score = preds, mean_weak
 
     print(f"\nbest: epoch {result.best_epoch} | mean weak AUC {result.best_score:.4f} | "
           f"{(time.time() - t0) / 3600:.2f} h elapsed")
@@ -607,6 +683,8 @@ def fit(cfg: TrainConfig, model, train_dl, valid_dl, out_dir, t0: float | None =
 
 def write_oof(cfg: TrainConfig, result: FitResult, valid_df, out_dir) -> pd.DataFrame:
     """Writes the best epoch's validation predictions as oof_fold<FOLD>.csv.
+
+    The weight-averaged model, when there is one, goes to oof_swa_fold<FOLD>.csv.
 
     Args:
         cfg: The run config; reads FOLD.
@@ -623,10 +701,17 @@ def write_oof(cfg: TrainConfig, result: FitResult, valid_df, out_dir) -> pd.Data
         # already spent). Nothing to write, and no reason to raise on the way out.
         print("no validation predictions were produced -- nothing to write.")
         return pd.DataFrame(columns=["StudyInstanceUID"] + TARGETS)
-    oof = pd.DataFrame(result.best_preds, columns=TARGETS)
-    oof.insert(0, "StudyInstanceUID", valid_df.StudyInstanceUID.to_numpy())
-    oof["fold"] = cfg.FOLD
-    oof["source"] = valid_df["source"].to_numpy()
+    def frame(preds):
+        """Wraps one prediction matrix as an OOF table in loader order."""
+        out = pd.DataFrame(preds, columns=TARGETS)
+        out.insert(0, "StudyInstanceUID", valid_df.StudyInstanceUID.to_numpy())
+        out["fold"] = cfg.FOLD
+        out["source"] = valid_df["source"].to_numpy()
+        return out
+
+    if result.swa_preds is not None:
+        frame(result.swa_preds).to_csv(out_dir / f"oof_swa_fold{cfg.FOLD}.csv", index=False)
+    oof = frame(result.best_preds)
     oof.to_csv(out_dir / f"oof_fold{cfg.FOLD}.csv", index=False)
     return oof
 

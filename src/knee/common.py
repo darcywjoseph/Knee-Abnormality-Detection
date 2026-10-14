@@ -219,15 +219,22 @@ def slice_descriptors(vol: np.ndarray) -> np.ndarray:
     A dot product between two descriptors is then a correlation, which is what the
     slice-direction test needs.
 
+    Each slice is pooled on a 20 x 20 grid of cells whose edges fall on `linspace`
+    boundaries, so any side works; at a side divisible by 20 the cells are equal and the
+    result matches an even reshape-and-mean exactly.
+
     Args:
-        vol: Slices of one slot, shape (S, H, W); H and W must be multiples of 20.
+        vol: Slices of one slot, shape (S, H, W).
 
     Returns:
         Descriptors of shape (S, 400).
     """
     s, h, w = vol.shape
-    x = vol.reshape(s, 20, h // 20, 20, w // 20).mean(axis=(2, 4)).reshape(s, -1)
-    x = x.astype(np.float64)
+    rows = np.linspace(0, h, 21).astype(int)
+    cols = np.linspace(0, w, 21).astype(int)
+    x = vol.astype(np.float64)
+    x = np.add.reduceat(np.add.reduceat(x, rows[:-1], axis=1), cols[:-1], axis=2)
+    x = (x / np.outer(np.diff(rows), np.diff(cols))).reshape(s, -1)
     x -= x.mean(axis=1, keepdims=True)
     norm = np.linalg.norm(x, axis=1, keepdims=True)
     return x / np.where(norm > 0, norm, 1.0)

@@ -230,12 +230,14 @@ def model_input_side(cfg: TrainConfig) -> int:
     """The image side the backbone is fed.
 
     Args:
-        cfg: The run config; reads BACKBONE, VIT_IMG and IMG.
+        cfg: The run config; reads BACKBONE, VIT_IMG, MODEL_IMG and IMG.
 
     Returns:
-        VIT_IMG for a ViT backbone, otherwise the cache side.
+        VIT_IMG for a ViT backbone, MODEL_IMG when set, otherwise the cache side.
     """
-    return cfg.VIT_IMG if "vit" in cfg.BACKBONE else cfg.IMG
+    if "vit" in cfg.BACKBONE:
+        return cfg.VIT_IMG
+    return cfg.MODEL_IMG or cfg.IMG
 
 
 def random_affine(x: np.ndarray, rng: np.random.Generator, cfg: TrainConfig) -> np.ndarray:
@@ -303,6 +305,14 @@ class KneeCache(Dataset):
         conf = 2.0 * np.abs(self.y - 0.5)
         wl = (cfg.CONF_FLOOR + (1.0 - cfg.CONF_FLOOR) * conf if cfg.CONF_WEIGHT
               else np.ones_like(self.y))
+        # Per-label multiplier on LLM rows whose target is >= 0.5, so a label set with fewer
+        # positives (v3 hedges sub-threshold findings to 0.25) still sends the positive class
+        # as much gradient as v2 did. Gold rows are hard labels and stay at weight 1.
+        if cfg.POS_WEIGHT is not None:
+            pos_w = np.asarray(cfg.POS_WEIGHT, dtype=np.float32)
+            if pos_w.shape != (len(TARGETS),):
+                raise ValueError(f"POS_WEIGHT needs {len(TARGETS)} values, got {pos_w.shape}")
+            wl = wl * np.where(self.y >= 0.5, pos_w, 1.0)
         wl[gold] = 1.0
         self.wl = wl.astype(np.float32)
 

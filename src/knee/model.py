@@ -93,12 +93,60 @@ class LabelAttnHead(nn.Module):
         return (pooled * self.cls_w).sum(-1) + self.cls_b
 
 
+class AllSliceHead(nn.Module):
+    """One gated attention over every slice of every slot in the study (I5 design a).
+
+    The study is one bag of K*S slice embeddings rather than K pooled slots. A learned
+    per-slot vector is added to each slice embedding so the gate knows which series type a
+    slice came from, slices of absent slots are masked out of the softmax, and the pooled
+    vector goes through dropout and one linear layer to the 12 logits. Label-agnostic, like
+    `AttnPool`; see `LabelAttnHead` for the per-label variant.
+
+    Args:
+        dim: Slice embedding width.
+        hidden: Width of the attention gate.
+        n_slots: Number of cache slots K.
+        n_out: Number of labels.
+        dropout: Dropout on the pooled vector.
+    """
+
+    def __init__(self, dim, hidden, n_slots, n_out, dropout):
+        super().__init__()
+        self.slot_emb = nn.Parameter(torch.zeros(n_slots, dim))
+        self.norm = nn.LayerNorm(dim)
+        self.v = nn.Linear(dim, hidden)
+        self.u = nn.Linear(dim, hidden)
+        self.w = nn.Linear(hidden, 1)
+        self.drop = nn.Dropout(dropout)
+        self.head = nn.Linear(dim, n_out)
+
+    def forward(self, f, present):
+        """Pools (B, K, S, D) slice embeddings into (B, n_out) logits.
+
+        Args:
+            f: Slice embeddings, one per (slot, slice).
+            present: (B, K) mask, 1 where the slot exists in the study.
+
+        Returns:
+            Logits of shape (B, n_out).
+        """
+        b, k, s, d = f.shape
+        h = self.norm(f + self.slot_emb[None, :, None, :]).reshape(b, k * s, d)
+        a = self.w(torch.tanh(self.v(h)) * torch.sigmoid(self.u(h)))     # (B, K*S, 1)
+        keep = (present > 0.5)[:, :, None].expand(b, k, s).reshape(b, k * s, 1)
+        a = a.masked_fill(~keep, -1e4).softmax(dim=1)
+        pooled = (a * h).sum(dim=1)                                      # (B, D)
+        return self.head(self.drop(pooled))
+
+
 class Model2p5D(nn.Module):
     """2.5D study classifier: one encoder per slice, pooled per slot, one logit per label.
 
     Args:
         cfg: The training CFG dict; reads BACKBONE, PRETRAINED, VIT_*, GRAD_CHECKPOINT,
-            N_SLOTS, HEAD, HEAD_HIDDEN, SLOT_EMB, ATTN_DIM and DROPOUT.
+            N_SLOTS, HEAD (concat, label_attn or all_slice), HEAD_HIDDEN, SLOT_EMB, ATTN_DIM,
+            DROPOUT, DROP_PATH (optional), and for POS_EMB also
+            CACHE_SLICES and SLICE_STRIDE.
     """
 
     def __init__(self, cfg):
@@ -106,10 +154,15 @@ class Model2p5D(nn.Module):
         self.n_slots = cfg["N_SLOTS"]
         self.is_vit = "vit" in cfg["BACKBONE"]
         kw = {}
+        if cfg.get("DROP_PATH"):
+            kw["drop_path_rate"] = cfg["DROP_PATH"]
         if self.is_vit:
             kw["img_size"] = cfg["VIT_IMG"]
         elif "coatnet" in cfg["BACKBONE"]:
-            kw["img_size"] = cfg["IMG"]
+            # CoAtNet fixes its attention window at build time from img_size, so it must be
+            # told the side it will be fed: MODEL_IMG when the dataset upsamples, else the
+            # cache side.
+            kw["img_size"] = cfg.get("MODEL_IMG") or cfg["IMG"]
         self.backbone = timm.create_model(
             cfg["BACKBONE"], pretrained=cfg["PRETRAINED"], num_classes=0, in_chans=3, **kw)
         if cfg["GRAD_CHECKPOINT"]:
@@ -132,10 +185,20 @@ class Model2p5D(nn.Module):
             else:
                 print(f"ViT: FULL fine-tune ({n_blocks} blocks, nothing frozen)")
             dim = dim * 2
+        # A learned vector per (slot, sampled slice position), added before pooling. The pools
+        # are order-blind and the right-knee mirror reverses sagittal slice order, so without
+        # this the model cannot tell where in the stack a slice sits.
+        self.pos_emb = None
+        if cfg.get("POS_EMB"):
+            n_pos = len(range(0, cfg["CACHE_SLICES"], cfg["SLICE_STRIDE"]))
+            self.pos_emb = nn.Parameter(torch.zeros(self.n_slots, n_pos, dim))
         self.head_kind = cfg["HEAD"]
         if self.head_kind == "label_attn":
             self.head = LabelAttnHead(dim, cfg["HEAD_HIDDEN"], self.n_slots, len(TARGETS),
                                       cfg["SLOT_EMB"], cfg["DROPOUT"])
+        elif self.head_kind == "all_slice":
+            self.head = AllSliceHead(dim, cfg["HEAD_HIDDEN"], self.n_slots, len(TARGETS),
+                                     cfg["DROPOUT"])
         else:
             self.pool = AttnPool(dim, cfg["ATTN_DIM"])
             self.drop = nn.Dropout(cfg["DROPOUT"])
@@ -159,10 +222,13 @@ class Model2p5D(nn.Module):
             f = torch.cat([t[:, 0], t[:, npre:].mean(dim=1)], dim=1)   # (N, 2D)
         else:
             f = self.backbone(flat)                                    # (B*k*S, D)
-        if self.head_kind == "label_attn":
+        f = f.reshape(b, k, s, -1)
+        if self.pos_emb is not None:
+            f = f + self.pos_emb[None, :, :s]
+        if self.head_kind in ("label_attn", "all_slice"):
             if present is None:
                 present = torch.ones(b, k, device=f.device)
-            return self.head(f.reshape(b, k, s, -1), present)
+            return self.head(f, present)
         f = f.reshape(b * k, s, -1)
         emb, _ = self.pool(f)                                          # (B*k, D)
         emb = emb.reshape(b, k, -1)
