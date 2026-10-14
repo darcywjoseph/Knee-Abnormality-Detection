@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="450" viewBox="0 0 1000 450" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="450" fill="#fcfcfb"/>
+
+<text x="20" y="30" font-size="15" fill="#0b0b0b" text-anchor="start" font-weight="600">S11b: five model families, 47 checkpoints, one submission</text>
+<rect x="20" y="190" width="130" height="100" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="85" y="218" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">Test study</text>
+<text x="85" y="242" font-size="12" fill="#52514e" text-anchor="middle">raw DICOM</text>
+<text x="85" y="262" font-size="12" fill="#52514e" text-anchor="middle">caches built in</text>
+<text x="85" y="280" font-size="12" fill="#52514e" text-anchor="middle">the Kaggle kernel</text>
+<rect x="180" y="60" width="160" height="64" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="260" y="86" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">Cache v3</text>
+<text x="260" y="108" font-size="11.5" fill="#52514e" text-anchor="middle">6 slots × 24 slices, 320 px</text>
+<rect x="180" y="134" width="160" height="64" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="260" y="160" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">Cache v4</text>
+<text x="260" y="182" font-size="11.5" fill="#52514e" text-anchor="middle">6 slots × 24 slices, 384 px</text>
+<rect x="180" y="208" width="160" height="212" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="260" y="302" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">Cache v5</text>
+<text x="260" y="324" font-size="11.5" fill="#52514e" text-anchor="middle">every series, up to 8</text>
+<text x="260" y="342" font-size="11.5" fill="#52514e" text-anchor="middle">32 slices, 288 px</text>
+<rect x="370" y="60" width="360" height="64" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="384" y="81" font-size="12.5" fill="#0b0b0b" text-anchor="start" font-weight="600">Slot ConvNeXt-Tiny</text>
+<text x="384" y="99" font-size="11" fill="#52514e" text-anchor="start">gated attention per slot, 12 slices of 24</text>
+<text x="384" y="116" font-size="11" fill="#52514e" text-anchor="start">pseudo-labels round 2 · 4 recipes × 5 folds + 3 twins = 23</text>
+<rect x="370" y="134" width="360" height="64" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="384" y="155" font-size="12.5" fill="#0b0b0b" text-anchor="start" font-weight="600">CoAtNet-2, public Raptor recipe</text>
+<text x="384" y="173" font-size="11" fill="#52514e" text-anchor="start">per-finding attention, 12 slices of 24</text>
+<text x="384" y="190" font-size="11" fill="#52514e" text-anchor="start">pseudo-labels round 2 · 5 folds + 1 twin = 6</text>
+<rect x="370" y="208" width="360" height="64" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="384" y="229" font-size="12.5" fill="#0b0b0b" text-anchor="start" font-weight="600">Series-bag ConvNeXt-Tiny</text>
+<text x="384" y="247" font-size="11" fill="#52514e" text-anchor="start">per-finding attention, type + depth embeddings, 16 of 32</text>
+<text x="384" y="264" font-size="11" fill="#52514e" text-anchor="start">pseudo-labels round 3 · 5 folds + 3 twins = 8</text>
+<rect x="370" y="282" width="360" height="64" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="384" y="303" font-size="12.5" fill="#0b0b0b" text-anchor="start" font-weight="600">Series-bag ConvNeXt-Tiny</text>
+<text x="384" y="321" font-size="11" fill="#52514e" text-anchor="start">same model</text>
+<text x="384" y="338" font-size="11" fill="#52514e" text-anchor="start">plain LLM labels, no expert rows · 5 folds</text>
+<rect x="370" y="356" width="360" height="64" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="384" y="377" font-size="12.5" fill="#0b0b0b" text-anchor="start" font-weight="600">Series-bag ConvNeXt-Tiny</text>
+<text x="384" y="395" font-size="11" fill="#52514e" text-anchor="start">same model</text>
+<text x="384" y="412" font-size="11" fill="#52514e" text-anchor="start">three public LLM-extracted label sets · 5 folds</text>
+<rect x="770" y="150" width="210" height="100" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="875" y="178" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">Rank average</text>
+<text x="875" y="202" font-size="12" fill="#52514e" text-anchor="middle">within each family,</text>
+<text x="875" y="220" font-size="12" fill="#52514e" text-anchor="middle">then across the five</text>
+<text x="875" y="238" font-size="12" fill="#52514e" text-anchor="middle">with equal weight</text>
+<rect x="770" y="300" width="210" height="64" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="875" y="327" font-size="12.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">submission.csv</text>
+<text x="875" y="349" font-size="12" fill="#52514e" text-anchor="middle">12 scores per study</text>
+<path d="M152,240 C166,240 166,92 177,92" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M152,240 C166,240 166,166 177,166" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M152,240 C166,240 166,314 177,314" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<line x1="342" y1="92" x2="367" y2="92" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<line x1="342" y1="166" x2="367" y2="166" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M342,314 C356,314 356,240 367,240" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M342,314 C356,314 356,314 367,314" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M342,314 C356,314 356,388 367,388" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M732,92 C752,92 752,200 767,200" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M732,166 C752,166 752,200 767,200" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M732,240 C752,240 752,200 767,200" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M732,314 C752,314 752,200 767,200" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<path d="M732,388 C752,388 752,200 767,200" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+<line x1="875" y1="252" x2="875" y2="297" stroke="#52514e" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+</svg>

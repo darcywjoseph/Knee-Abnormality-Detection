@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="450" viewBox="0 0 1000 450" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52514e"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="450" fill="#fcfcfb"/>
+
+<text x="20" y="30" font-size="15" fill="#0b0b0b" text-anchor="start" font-weight="600">Two ways to pool a study's slice vectors into 12 logits</text>
+<text x="20" y="62" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">Gated attention per slot</text>
+<text x="20" y="80" font-size="11.5" fill="#52514e" text-anchor="start">slot ConvNeXt family</text>
+<text x="20" y="111" font-size="11.5" fill="#52514e" text-anchor="start">sagittal FS</text>
+<rect x="112" y="100" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="126" y="100" width="11" height="11" rx="2" fill="#e4eefb" stroke="#a3a29c"/>
+<rect x="140" y="100" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="154" y="100" width="11" height="11" rx="2" fill="#dbe8f9" stroke="#a3a29c"/>
+<rect x="168" y="100" width="11" height="11" rx="2" fill="#d3e3f7" stroke="#a3a29c"/>
+<rect x="182" y="100" width="11" height="11" rx="2" fill="#c4daf4" stroke="#a3a29c"/>
+<rect x="196" y="100" width="11" height="11" rx="2" fill="#a7c7ef" stroke="#a3a29c"/>
+<rect x="210" y="100" width="11" height="11" rx="2" fill="#77a9e5" stroke="#a3a29c"/>
+<rect x="224" y="100" width="11" height="11" rx="2" fill="#3d84da" stroke="#a3a29c"/>
+<rect x="238" y="100" width="11" height="11" rx="2" fill="#8ab5e9" stroke="#a3a29c"/>
+<rect x="252" y="100" width="11" height="11" rx="2" fill="#cde0f6" stroke="#a3a29c"/>
+<rect x="266" y="100" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<line x1="282" y1="107" x2="302" y2="107" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="304" y="96" width="54" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="331" y="111" font-size="11" fill="#0b0b0b" text-anchor="middle">gate</text>
+<line x1="360" y1="107" x2="378" y2="107" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="380" y="96" width="48" height="22" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="404" y="111" font-size="11" fill="#0b0b0b" text-anchor="middle">768-d</text>
+<text x="20" y="151" font-size="11.5" fill="#52514e" text-anchor="start">coronal FS</text>
+<rect x="112" y="140" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="126" y="140" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="140" y="140" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="154" y="140" width="11" height="11" rx="2" fill="#b0cdf1" stroke="#a3a29c"/>
+<rect x="168" y="140" width="11" height="11" rx="2" fill="#649de1" stroke="#a3a29c"/>
+<rect x="182" y="140" width="11" height="11" rx="2" fill="#2a78d6" stroke="#a3a29c"/>
+<rect x="196" y="140" width="11" height="11" rx="2" fill="#5090de" stroke="#a3a29c"/>
+<rect x="210" y="140" width="11" height="11" rx="2" fill="#9dc1ed" stroke="#a3a29c"/>
+<rect x="224" y="140" width="11" height="11" rx="2" fill="#cde0f6" stroke="#a3a29c"/>
+<rect x="238" y="140" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="252" y="140" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="266" y="140" width="11" height="11" rx="2" fill="#e8f1fc" stroke="#a3a29c"/>
+<line x1="282" y1="147" x2="302" y2="147" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="304" y="136" width="54" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="331" y="151" font-size="11" fill="#0b0b0b" text-anchor="middle">gate</text>
+<line x1="360" y1="147" x2="378" y2="147" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="380" y="136" width="48" height="22" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="404" y="151" font-size="11" fill="#0b0b0b" text-anchor="middle">768-d</text>
+<text x="20" y="191" font-size="11.5" fill="#52514e" text-anchor="start">axial FS</text>
+<rect x="112" y="180" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="126" y="180" width="11" height="11" rx="2" fill="#c4daf4" stroke="#a3a29c"/>
+<rect x="140" y="180" width="11" height="11" rx="2" fill="#8ab5e9" stroke="#a3a29c"/>
+<rect x="154" y="180" width="11" height="11" rx="2" fill="#3d84da" stroke="#a3a29c"/>
+<rect x="168" y="180" width="11" height="11" rx="2" fill="#649de1" stroke="#a3a29c"/>
+<rect x="182" y="180" width="11" height="11" rx="2" fill="#b0cdf1" stroke="#a3a29c"/>
+<rect x="196" y="180" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="210" y="180" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="224" y="180" width="11" height="11" rx="2" fill="#e4eefb" stroke="#a3a29c"/>
+<rect x="238" y="180" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="252" y="180" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="266" y="180" width="11" height="11" rx="2" fill="#e8f1fc" stroke="#a3a29c"/>
+<line x1="282" y1="187" x2="302" y2="187" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="304" y="176" width="54" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="331" y="191" font-size="11" fill="#0b0b0b" text-anchor="middle">gate</text>
+<line x1="360" y1="187" x2="378" y2="187" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="380" y="176" width="48" height="22" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="404" y="191" font-size="11" fill="#0b0b0b" text-anchor="middle">768-d</text>
+<text x="20" y="231" font-size="11.5" fill="#52514e" text-anchor="start">sagittal T1</text>
+<rect x="112" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="126" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="140" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="154" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="168" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="182" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="196" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="210" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="224" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="238" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="252" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="266" y="220" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<text x="290" y="230" font-size="11" fill="#52514e" text-anchor="start">absent: zeros</text>
+<rect x="380" y="216" width="48" height="22" rx="8" fill="#f1f0ec" stroke="#a3a29c" stroke-dasharray="4 3"/>
+<text x="404" y="231" font-size="11" fill="#52514e" text-anchor="middle">0</text>
+<text x="20" y="271" font-size="11.5" fill="#52514e" text-anchor="start">… six slots</text>
+<text x="112" y="271" font-size="11" fill="#52514e" text-anchor="start">one square per slice vector, darker = more weight</text>
+<line x1="404" y1="276" x2="404" y2="300" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="314" y="302" width="180" height="26" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="404" y="319" font-size="11.5" fill="#0b0b0b" text-anchor="middle">concat 6 × 768 = 4,608</text>
+<line x1="404" y1="328" x2="404" y2="348" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="314" y="350" width="180" height="26" rx="8" fill="#ffffff" stroke="#a3a29c"/>
+<text x="404" y="367" font-size="11.5" fill="#0b0b0b" text-anchor="middle">dropout, Linear(4608, 12)</text>
+<line x1="404" y1="376" x2="404" y2="396" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="354" y="398" width="100" height="26" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="404" y="415" font-size="11.5" fill="#0b0b0b" text-anchor="middle" font-weight="600">12 logits</text>
+<text x="20" y="436" font-size="11.5" fill="#52514e" text-anchor="start">One gate, shared by every slot and every finding. The linear layer sorts out the findings.</text>
+<line x1="500" y1="50" x2="500" y2="420" stroke="#e6e5e0"/>
+<text x="520" y="62" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">Per-finding attention over the whole bag</text>
+<text x="520" y="80" font-size="11.5" fill="#52514e" text-anchor="start">series-bag and CoAtNet families</text>
+<text x="520" y="127" font-size="11.5" fill="#52514e" text-anchor="start">every slice of</text>
+<text x="520" y="141" font-size="11.5" fill="#52514e" text-anchor="start">every series</text>
+<rect x="615" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="629" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="643" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="657" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="671" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="693" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="707" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="721" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="735" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="749" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="771" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="785" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="799" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="813" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="827" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="849" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="863" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="877" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="891" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<rect x="905" y="116" width="11" height="11" rx="2" fill="#bad4f2" stroke="#a3a29c"/>
+<text x="648.5" y="142" font-size="10.5" fill="#52514e" text-anchor="middle">sag FS</text>
+<text x="726.5" y="142" font-size="10.5" fill="#52514e" text-anchor="middle">cor FS</text>
+<text x="804.5" y="142" font-size="10.5" fill="#52514e" text-anchor="middle">ax FS</text>
+<text x="882.5" y="142" font-size="10.5" fill="#52514e" text-anchor="middle">sag T1</text>
+<text x="615" y="106" font-size="11" fill="#52514e" text-anchor="start">+ series-type embedding  + depth embedding</text>
+<text x="520" y="177" font-size="11.5" fill="#0b0b0b" text-anchor="start" font-weight="600">ACL</text>
+<rect x="615" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="629" y="166" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="643" y="166" width="11" height="11" rx="2" fill="#3d84da" stroke="#a3a29c"/>
+<rect x="657" y="166" width="11" height="11" rx="2" fill="#77a9e5" stroke="#a3a29c"/>
+<rect x="671" y="166" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="693" y="166" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="707" y="166" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="721" y="166" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="735" y="166" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="749" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="771" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="785" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="799" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="813" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="827" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="849" y="166" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="863" y="166" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="877" y="166" width="11" height="11" rx="2" fill="#b0cdf1" stroke="#a3a29c"/>
+<rect x="891" y="166" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="905" y="166" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<line x1="921" y1="172" x2="937" y2="172" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="939" y="161" width="46" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="962" y="176" font-size="11" fill="#0b0b0b" text-anchor="middle">logit</text>
+<text x="520" y="215" font-size="11.5" fill="#0b0b0b" text-anchor="start" font-weight="600">Effusion</text>
+<rect x="615" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="629" y="204" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="643" y="204" width="11" height="11" rx="2" fill="#cde0f6" stroke="#a3a29c"/>
+<rect x="657" y="204" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="671" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="693" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="707" y="204" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="721" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="735" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="749" y="204" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="771" y="204" width="11" height="11" rx="2" fill="#b0cdf1" stroke="#a3a29c"/>
+<rect x="785" y="204" width="11" height="11" rx="2" fill="#5090de" stroke="#a3a29c"/>
+<rect x="799" y="204" width="11" height="11" rx="2" fill="#2a78d6" stroke="#a3a29c"/>
+<rect x="813" y="204" width="11" height="11" rx="2" fill="#8ab5e9" stroke="#a3a29c"/>
+<rect x="827" y="204" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="849" y="204" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="863" y="204" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="877" y="204" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="891" y="204" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="905" y="204" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<line x1="921" y1="210" x2="937" y2="210" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="939" y="199" width="46" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="962" y="214" font-size="11" fill="#0b0b0b" text-anchor="middle">logit</text>
+<text x="520" y="253" font-size="11.5" fill="#0b0b0b" text-anchor="start" font-weight="600">PF OA</text>
+<rect x="615" y="242" width="11" height="11" rx="2" fill="#b0cdf1" stroke="#a3a29c"/>
+<rect x="629" y="242" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="643" y="242" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="657" y="242" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="671" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="693" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="707" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="721" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="735" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="749" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="771" y="242" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="785" y="242" width="11" height="11" rx="2" fill="#c4daf4" stroke="#a3a29c"/>
+<rect x="799" y="242" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="813" y="242" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="827" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<rect x="849" y="242" width="11" height="11" rx="2" fill="#3d84da" stroke="#a3a29c"/>
+<rect x="863" y="242" width="11" height="11" rx="2" fill="#8ab5e9" stroke="#a3a29c"/>
+<rect x="877" y="242" width="11" height="11" rx="2" fill="#d7e6f8" stroke="#a3a29c"/>
+<rect x="891" y="242" width="11" height="11" rx="2" fill="#e0ecfa" stroke="#a3a29c"/>
+<rect x="905" y="242" width="11" height="11" rx="2" fill="#e6f0fb" stroke="#a3a29c"/>
+<line x1="921" y1="248" x2="937" y2="248" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="939" y="237" width="46" height="22" rx="8" fill="#eaf2fc" stroke="#2a78d6"/>
+<text x="962" y="252" font-size="11" fill="#0b0b0b" text-anchor="middle">logit</text>
+<text x="520" y="291" font-size="11.5" fill="#52514e" text-anchor="start">… 12 findings</text>
+<text x="615" y="291" font-size="11" fill="#52514e" text-anchor="start">each with its own softmax over the same slice vectors</text>
+<text x="520" y="335" font-size="11.5" fill="#52514e" text-anchor="start">absent series</text>
+<rect x="615" y="324" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="629" y="324" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="643" y="324" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="657" y="324" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<rect x="671" y="324" width="11" height="11" rx="2" fill="#ffffff" stroke="#a3a29c" stroke-dasharray="2 2"/>
+<text x="695" y="335" font-size="11" fill="#52514e" text-anchor="start">masked out of every softmax</text>
+<text x="520" y="379" font-size="11" fill="#52514e" text-anchor="start">score per slice and finding: Linear(768, 256), tanh, Linear(256, 12).</text>
+<text x="520" y="395" font-size="11" fill="#52514e" text-anchor="start">Pooled vector per finding, then a dot product with that finding's weights.</text>
+<text x="520" y="436" font-size="11.5" fill="#52514e" text-anchor="start">The ACL output can weight three sagittal slices while the Effusion output weights the axial series.</text>
+</svg>
