@@ -4,11 +4,15 @@ A classifier for the Kaggle RSNA Knee Abnormality Detection competition:
 twelve knee findings from MRI, scored by mean ROC AUC.
 
 Best entry scores 0.951 on the public leaderboard. It ensembles five model families,
-47 checkpoints in all, trained on labels that an LLM read out of free-text radiology reports.
+47 checkpoints in all, trained on labels an LLM extracted from free-text radiology reports.
 [SOLUTION.md](SOLUTION.md) explains how it works, with a worked example and what did and
-did improve the public leaderboard scoring.
+did not improve the public leaderboard score.
 
 ![S11b ensemble](assets/ensemble.svg)
+
+Model takes a whole study as input. This includes every series the scanner produced, across three planes and two contrasts, 32 slices each. Model produces a score in a single pass.
+
+![One knee MRI study](assets/study_overview.png)
 
 ## Setup
 
